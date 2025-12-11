@@ -34,10 +34,18 @@ class BrowseEndpoint {
       return run(_spTCookieFromCredentials(auth.credentials))
     }
 
-    return auth.authStateStream.firstWhere((event){
-      var t = event["type"]
-      return t == "login" || t == "recovered" || t == "refreshed"
-    }).then((_){
+    // Some Hetu builds don’t expose firstWhere; emulate with manual listen.
+    var completer = std.Completer()
+    StreamSubscription sub
+    sub = auth.authStateStream.listen((event){
+      var t = event?["type"]
+      if (t == "login" || t == "recovered" || t == "refreshed") {
+        sub?.cancel()
+        completer.complete(event)
+      }
+    })
+
+    return completer.future.then((_){
       if (!auth.isAuthenticated()) {
         throw { message: "Authentication required. Please log in." }
       }
