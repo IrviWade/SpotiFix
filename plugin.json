@@ -1,7 +1,7 @@
 {
-  "version": "0.2.0",
-  "name": "Spotify",
-  "author": "Sonic Liberation",
+  "version": "0.1 ALPHA",
+  "name": "SpotiFix",
+  "author": "Emryn",
   "description": "Spotube plugin for Spotify metadata",
   "entryPoint": "SpotifyMetadataProviderPlugin",
   "apis": ["webview", "localstorage", "timezone"],

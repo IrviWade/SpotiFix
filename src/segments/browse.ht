@@ -1,3 +1,4 @@
+import "module:std" as std
 import "module:spotube_plugin" as spotube
 
 import { SpotifyGqlApi } from '../../dependencies/hetu_spotify_gql_client/lib/assets/hetu/spotify_gql_api_client.ht'
@@ -5,6 +6,7 @@ import { Converters } from '../converter/converter.ht'
 import { SpotifyAuthEndpoint } from "./auth.ht"
 
 var Timezone = spotube.Timezone
+var Stream = std.Stream
 
 class BrowseEndpoint {
   var client: SpotifyGqlApi
