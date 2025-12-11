@@ -13,7 +13,10 @@ class BrowseEndpoint {
   var _authenticating: bool
   var _authPromise
 
-  construct (this.client, this.auth)
+  construct (this.client, this.auth){
+    _authenticating = false
+    _authPromise = null
+  }
 
   fun _spTCookieFromCredentials(creds: Map) -> string {
     var cookies = creds?["cookies"]
