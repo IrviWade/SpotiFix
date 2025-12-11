@@ -30,7 +30,15 @@ class SpotifyMetadataProviderPlugin {
   
   construct (){
     api = SpotifyGqlApi()
-    auth = SpotifyAuthEndpoint()
+    auth = SpotifyAuthEndpoint((event){
+      var t = event?["type"]
+      if (t == "login" || t == "recovered" || t == "refreshed") {
+        api.setAccessToken(auth.credentials["accessToken"])
+      }
+      if (t == "logout") {
+        api.setAccessToken(null)
+      }
+    })
 
     album = AlbumEndpoint(api)
     artist = ArtistEndpoint(api)
@@ -41,8 +49,15 @@ class SpotifyMetadataProviderPlugin {
     user = UserEndpoint(api)
     core = CorePlugin()
 
+    // Extra listener to catch future refresh/login events during runtime.
     auth.authStateStream.listen((event) {
-      api.setAccessToken(auth.credentials["accessToken"])
+      var t = event?["type"]
+      if (t == "login" || t == "recovered" || t == "refreshed") {
+        api.setAccessToken(auth.credentials["accessToken"])
+      }
+      if (t == "logout") {
+        api.setAccessToken(null)
+      }
     })
   }
 }

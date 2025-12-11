@@ -6,7 +6,6 @@ import { Converters } from '../converter/converter.ht'
 import { SpotifyAuthEndpoint } from "./auth.ht"
 
 var Timezone = spotube.Timezone
-var Stream = std.Stream
 
 class BrowseEndpoint {
   var client: SpotifyGqlApi
@@ -34,18 +33,8 @@ class BrowseEndpoint {
       return run(_spTCookieFromCredentials(auth.credentials))
     }
 
-    // Some Hetu builds don’t expose firstWhere; emulate with manual listen.
-    var completer = std.Completer()
-    StreamSubscription sub
-    sub = auth.authStateStream.listen((event){
-      var t = event?["type"]
-      if (t == "login" || t == "recovered" || t == "refreshed") {
-        sub?.cancel()
-        completer.complete(event)
-      }
-    })
-
-    return completer.future.then((_){
+    // Fall back to interactive authentication when no valid session is present.
+    return auth.authenticate().then((_){
       if (!auth.isAuthenticated()) {
         throw { message: "Authentication required. Please log in." }
       }
