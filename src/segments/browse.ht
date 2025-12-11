@@ -10,6 +10,8 @@ var Timezone = spotube.Timezone
 class BrowseEndpoint {
   var client: SpotifyGqlApi
   var auth: SpotifyAuthEndpoint
+  var _authenticating: bool
+  var _authPromise
 
   construct (this.client, this.auth)
 
@@ -33,8 +35,24 @@ class BrowseEndpoint {
       return run(_spTCookieFromCredentials(auth.credentials))
     }
 
-    // Fall back to interactive authentication when no valid session is present.
-    return auth.authenticate().then((_){
+    // Avoid opening multiple auth windows at once.
+    if (_authenticating && _authPromise != null) {
+      return _authPromise.then((_){
+        if (!auth.isAuthenticated()) {
+          throw { message: "Authentication required. Please log in." }
+        }
+
+        return run(_spTCookieFromCredentials(auth.credentials))
+      })
+    }
+
+    _authenticating = true
+    _authPromise = auth.authenticate()
+
+    return _authPromise.then((_){
+      _authenticating = false
+      _authPromise = null
+
       if (!auth.isAuthenticated()) {
         throw { message: "Authentication required. Please log in." }
       }
