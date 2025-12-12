@@ -6,92 +6,53 @@ import { Converters } from '../converter/converter.ht'
 import { SpotifyAuthEndpoint } from "./auth.ht"
 
 var Timezone = spotube.Timezone
-var StreamSubscription = std.StreamSubscription
+var Future = std.Future
 
 class BrowseEndpoint {
   var client: SpotifyGqlApi
   var auth: SpotifyAuthEndpoint
-  var _pendingAuthCallbacks: List
 
-  construct (this.client, this.auth){
-    _pendingAuthCallbacks = []
-    
-    // Listen for auth events and resolve all pending callbacks
-    auth.authStateStream.listen((event){
-      var t = event?["type"]
-      if (t == "login" || t == "recovered" || t == "refreshed") {
-        var callbacks = _pendingAuthCallbacks
-        _pendingAuthCallbacks = []
-        for (var cb in callbacks) {
-          cb(true)
-        }
-      }
-    })
-  }
+  construct (this.client, this.auth)
 
   fun _spTCookieFromCredentials(creds: Map) -> string {
-    var cookies = creds?["cookies"]
+    if (creds == null) {
+      return null
+    }
+    var cookies = creds["cookies"]
     if (cookies == null) {
-      throw { message: "Missing cookies. Please log in again." }
+      return null
     }
 
     var spTCookies = cookies.where((c) => c["name"] == "sp_t").toList()
 
     if (spTCookies.isEmpty) {
-      throw { message: "Missing sp_t cookie. Please log in via the web player." }
+      return null
     }
 
     return spTCookies.elementAt(0)["value"]
   }
 
-  fun _withValidCredentials(run: (spTCookie: string) -> Future) {
-    // Already authenticated? Just run immediately.
-    if (auth.isAuthenticated()) {
-      return run(_spTCookieFromCredentials(auth.credentials))
+  fun _executeWithAuth(run: (spTCookie: string) -> Future) {
+    // Check if we have valid credentials
+    if (auth.credentials != null && auth.credentials["accessToken"] != null) {
+      var spTCookie = _spTCookieFromCredentials(auth.credentials)
+      if (spTCookie != null) {
+        return run(spTCookie)
+      }
     }
 
-    // Not authenticated - open login if not already open, then wait for auth event.
-    var isFirstWaiter = _pendingAuthCallbacks.isEmpty
-    
-    // Create a Future-like construct using callback
-    var result
-    var resolved = false
-    
-    _pendingAuthCallbacks.add((success){
-      if (resolved) return
-      resolved = true
-      
-      if (auth.isAuthenticated()) {
-        result = run(_spTCookieFromCredentials(auth.credentials))
-      }
-    })
-    
-    // Only the first waiter opens the auth window
-    if (isFirstWaiter) {
-      auth.authenticate()
-    }
-    
-    // Return a polling future that waits for resolved + result
-    return _pollForResult((){
-      return resolved && result != null
-    }, (){
-      return result
-    })
-  }
-  
-  fun _pollForResult(check: () -> bool, getResult: () -> any) {
-    if (check()) {
-      return getResult()
-    }
-    
-    // Poll every 100ms using Timer-based approach
-    return std.Future.delayed(std.Duration(milliseconds: 100), (){
-      return _pollForResult(check, getResult)
-    })
+    // No valid credentials - return empty result, user needs to login via UI
+    return Future.value({
+      limit: 20,
+      nextOffset: null,
+      hasMore: false,
+      total: 0,
+      items: []
+    }.toJson())
   }
 
   fun sections({offset: int, limit: int}) {
-    return _withValidCredentials((spTCookie){
+    return _executeWithAuth((spTCookie){
       return Timezone.getLocalTimeZone().then((timeZone){
         return client.browse.home(
           timeZone: timeZone,
@@ -127,7 +88,7 @@ class BrowseEndpoint {
   }
 
   fun sectionItems(id: string, {offset: int, limit: int}) {
-    return _withValidCredentials((spTCookie){
+    return _executeWithAuth((spTCookie){
       return Timezone.getLocalTimeZone().then((timeZone) {
         return client.browse.homeSection(
           id, 
@@ -155,3 +116,5 @@ class BrowseEndpoint {
     })
   }
 }
+
+export { BrowseEndpoint }

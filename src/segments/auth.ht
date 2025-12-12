@@ -3,16 +3,14 @@ import 'module:spotube_plugin' as spotube
 import { TOTP, OTPAlgorithm } from '../../dependencies/hetu_otp_util/lib/assets/hetu/otp_util.ht';
 
 var StreamController = std.StreamController
-var Stream = std.Stream
-var StreamSubscription = std.StreamSubscription
 var DateTime = std.DateTime
 var Duration = std.Duration
 var HttpClient = std.HttpClient
-var HttpResponse = std.HttpResponse
 var RequestOptions = std.RequestOptions
 var Timer = std.Timer
 var JSON = std.JSON
 var Regex = std.Regex
+var Random = std.Random
 var LocalStorage = spotube.LocalStorage
 var Webview = spotube.Webview
 var Cookie = spotube.Cookie
@@ -20,18 +18,16 @@ var Cookie = spotube.Cookie
 class SpotifyAuthEndpoint {
   final controller: StreamController
   var _timer: Timer
-  /// Map of:
-  /// - `cookies`: Map of cookies from <Cookie>.toJson()
-  /// - `accessToken`: The access token string
-  /// - `expiration`: The expiration timestamp in milliseconds since epoch
   var credentials: Map
   var client: HttpClient
+  var _isAuthenticating: bool
 
-  get authStateStream -> Stream => controller.stream
+  get authStateStream => controller.stream
 
   construct (onEvent: (data) -> void){
     controller = StreamController.broadcast()
     client = HttpClient()
+    _isAuthenticating = false
 
     controller.stream.listen((event) {
       if(onEvent != null) {
@@ -39,9 +35,12 @@ class SpotifyAuthEndpoint {
       }
       if(event["type"] == "recovered" || event["type"] == "login") {
         _timer?.cancel()
-        _timer = Timer.periodic(getExpirationDuration(), (cancel){
-          refreshCredentials()
-        })
+        var dur = getExpirationDuration()
+        if (dur != null && dur.inMilliseconds > 0) {
+          _timer = Timer.periodic(dur, (cancel){
+            refreshCredentials()
+          })
+        }
       }
     })
 
@@ -52,22 +51,28 @@ class SpotifyAuthEndpoint {
 		if (credentials == null) {
 			return true
 		}
+    var exp = credentials["expiration"]
+    if (exp == null) {
+      return true
+    }
 
 		final currentTime = DateTime.now()
-
-		final expirationTime = DateTime.fromMillisecondsSinceEpoch(credentials["expiration"])
+		final expirationTime = DateTime.fromMillisecondsSinceEpoch(exp)
 
 		return currentTime.isAfter(expirationTime)
 	}
 
   fun getExpirationDuration() -> Duration {
 		if (credentials == null) {
-			return 0;
+			return null
 		}
+    var exp = credentials["expiration"]
+    if (exp == null) {
+      return null
+    }
 
 		final currentTime = DateTime.now()
-
-		final expirationTime = DateTime.fromMillisecondsSinceEpoch(credentials["expiration"])
+		final expirationTime = DateTime.fromMillisecondsSinceEpoch(exp)
 
 		return expirationTime.difference(currentTime)
 	}
@@ -122,6 +127,8 @@ class SpotifyAuthEndpoint {
     for (int i = 0; i < length; i++) {
       bytes.add(Random().nextInt(256).toString())
     }
+    
+    return bytes.join("")
   }
 
   fun getToken({
@@ -193,36 +200,42 @@ class SpotifyAuthEndpoint {
     })
 	}
 
-	fun refreshCredentials() -> Future {
-		if (credentials["cookies"] == null) {
-			print(
-				"[refreshCredentials] No cookie found. Cannot refresh credentials.",
-			);
-			return;
+  fun refreshCredentials() {
+		if (credentials == null || credentials["cookies"] == null) {
+			print("[refreshCredentials] No cookie found. Cannot refresh credentials.");
+			return
 		}
-		return this.credentialsFromCookie(credentials["cookies"]).then((creds){
-      LocalStorage.setString("credentials", JSON.encode(creds.toJson()));
-      credentials = creds;
-      controller.add({ type: "refreshed" }.toJson())
+		this.credentialsFromCookie(credentials["cookies"]).then((creds){
+      if (creds != null && creds["accessToken"] != null) {
+        LocalStorage.setString("credentials", JSON.encode(creds.toJson()));
+        credentials = creds;
+        controller.add({ type: "refreshed" }.toJson())
+      }
     })
 	}
 
-  fun authenticate() -> Future {
+  fun authenticate() {
+    if (_isAuthenticating) {
+      return
+    }
+    _isAuthenticating = true
+    
     var webview = Webview(uri: "https://accounts.spotify.com/")
 
-    var sub: StreamSubscription = webview.onUrlRequestStream.listen((url){
+    webview.onUrlRequestStream.listen((url){
       var safeUrl = url.endsWith("/") ? url.substring(0, url.length - 1) : url
       var exp = Regex("https:\\/\\/accounts.spotify.com\\/.+\\/status")
       if(exp.hasMatch(safeUrl)) {
-        return webview.getCookies(url).then((cookies){
-          return login(cookies.map((cookie)=> cookie.toJson()).toList()).then(() {
-            return webview.close()
+        webview.getCookies(url).then((cookies){
+          login(cookies.map((cookie)=> cookie.toJson()).toList()).then(() {
+            _isAuthenticating = false
+            webview.close()
           })
         })
       }
     })
 
-    return webview.open()
+    webview.open()
   }
 
 	fun logout() {

@@ -12,9 +12,6 @@ import { TrackEndpoint } from './segments/track.ht'
 import { UserEndpoint } from './segments/user.ht'
 import { CorePlugin } from './segments/core.ht'
 
-var Stream = std.Stream
-var HttpClient = std.HttpClient
-
 class SpotifyMetadataProviderPlugin {
   var auth: SpotifyAuthEndpoint
   var api: SpotifyGqlApi
@@ -31,9 +28,12 @@ class SpotifyMetadataProviderPlugin {
   construct (){
     api = SpotifyGqlApi()
     auth = SpotifyAuthEndpoint((event){
-      var t = event?["type"]
+      if (event == null) return
+      var t = event["type"]
       if (t == "login" || t == "recovered" || t == "refreshed") {
-        api.setAccessToken(auth.credentials["accessToken"])
+        if (auth.credentials != null && auth.credentials["accessToken"] != null) {
+          api.setAccessToken(auth.credentials["accessToken"])
+        }
       }
       if (t == "logout") {
         api.setAccessToken(null)
@@ -49,11 +49,14 @@ class SpotifyMetadataProviderPlugin {
     user = UserEndpoint(api)
     core = CorePlugin()
 
-    // Extra listener to catch future refresh/login events during runtime.
+    // Listen for auth events during runtime
     auth.authStateStream.listen((event) {
-      var t = event?["type"]
+      if (event == null) return
+      var t = event["type"]
       if (t == "login" || t == "recovered" || t == "refreshed") {
-        api.setAccessToken(auth.credentials["accessToken"])
+        if (auth.credentials != null && auth.credentials["accessToken"] != null) {
+          api.setAccessToken(auth.credentials["accessToken"])
+        }
       }
       if (t == "logout") {
         api.setAccessToken(null)
