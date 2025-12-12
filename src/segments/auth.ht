@@ -214,9 +214,9 @@ class SpotifyAuthEndpoint {
     })
 	}
 
-  fun authenticate() {
+  fun authenticate() -> Future {
     if (_isAuthenticating) {
-      return
+      return std.Future.value(null)
     }
     _isAuthenticating = true
     
@@ -224,18 +224,24 @@ class SpotifyAuthEndpoint {
 
     webview.onUrlRequestStream.listen((url){
       var safeUrl = url.endsWith("/") ? url.substring(0, url.length - 1) : url
-      var exp = Regex("https:\\/\\/accounts.spotify.com\\/.+\\/status")
+      var exp = Regex("https:\/\/accounts.spotify.com\/.+\/status")
       if(exp.hasMatch(safeUrl)) {
         webview.getCookies(url).then((cookies){
           login(cookies.map((cookie)=> cookie.toJson()).toList()).then(() {
             _isAuthenticating = false
             webview.close()
           })
+        }).catchError((e){
+          _isAuthenticating = false
         })
       }
     })
 
-    webview.open()
+    return webview.open().then((_){
+      _isAuthenticating = false
+    }).catchError((e){
+      _isAuthenticating = false
+    })
   }
 
 	fun logout() {

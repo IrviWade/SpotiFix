@@ -7,6 +7,7 @@ import { SpotifyAuthEndpoint } from "./auth.ht"
 
 var Timezone = spotube.Timezone
 var Future = std.Future
+var Duration = std.Duration
 
 class BrowseEndpoint {
   var client: SpotifyGqlApi
@@ -41,14 +42,43 @@ class BrowseEndpoint {
       }
     }
 
-    // No valid credentials - return empty result, user needs to login via UI
-    return Future.value({
-      limit: 20,
-      nextOffset: null,
-      hasMore: false,
-      total: 0,
-      items: []
-    }.toJson())
+    // Trigger login flow and wait briefly for credentials
+    auth.authenticate()
+
+    return _waitForCredentials(25).then((spTCookie){
+      if (spTCookie != null) {
+        return run(spTCookie)
+      }
+
+      // Still no credentials: return empty list to avoid crash
+      return {
+        limit: 20,
+        nextOffset: null,
+        hasMore: false,
+        total: 0,
+        items: []
+      }.toJson()
+    })
+  }
+
+  fun _waitForCredentials(maxTries: int) -> Future {
+    var attempts = 0
+
+    fun poll(resolve){
+      attempts += 1
+      if (auth.credentials != null && auth.credentials["accessToken"] != null) {
+        var spTCookie = _spTCookieFromCredentials(auth.credentials)
+        if (spTCookie != null) {
+          return resolve(spTCookie)
+        }
+      }
+      if (attempts >= maxTries) {
+        return resolve(null)
+      }
+      std.Future.delayed(Duration(milliseconds: 200), (){ poll(resolve) })
+    }
+
+    return Future((resolve){ poll(resolve) })
   }
 
   fun sections({offset: int, limit: int}) {
